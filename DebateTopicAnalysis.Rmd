@@ -1,0 +1,75 @@
+---
+title: "DebateTopicAnalysis"
+author: "Vishal Disawar"
+date: "April 11, 2016"
+output: html_document
+---
+
+```{r, init}
+setwd("/Users/Vishal/Desktop/CS Classes/CS467/GameOfDebates/DebateAnalysis")
+
+library(Matrix)
+library(matrixStats)
+library(mixtools)
+
+debate_vocab <- read.table("/Users/Vishal/Desktop/CS Classes/CS467/GameOfDebates/DebateAnalysis/Dataset/vocab.debate.txt", header = F)
+debate_docwords <- read.csv("/Users/Vishal/Desktop/CS Classes/CS467/GameOfDebates/DebateAnalysis/Dataset/docword.debate.txt", header = F, sep = " ")
+debate_counts <- debate_docwords[1,]
+debate_docwords <- debate_docwords[-1,]
+```
+
+
+```{r, EM algorithm}
+num_docs <- debate_counts$V1
+num_words <- debate_counts$V2
+num_topics <- 10
+
+# j is each topic
+# k words, i documents (i = debate_counts$V1, k (j for func) = debate_counts$V2)
+# (document, word) = count
+x <- sparseMatrix(debate_docwords$V1, debate_docwords$V2, x = debate_docwords$V3)
+
+# pi distribution
+pi <- rep(1/num_topics, num_topics)
+
+# p_jk (10 topics, debate_counts$V2 words)
+p_jk <- matrix(data = rexp(num_words, rate = num_topics), nrow = num_topics, ncol = num_words)
+p_jk <- p_jk / rowSums(p_jk)
+# debate_counts$V1 docs, 10 topics
+w_ij <- matrix(1, nrow = num_docs, ncol = num_topics)
+
+l <- 1
+l_prev <- 0
+while(abs(abs(l_prev - l) / l) > 1e-05) {
+  # E step
+  p_jk <- p_jk + 0.005
+  p_jk <- p_jk / rowSums(p_jk)
+  for (i in 1:num_docs) {
+    # calculate log A_j
+    log_aj <- log(pi) + t(x[i, ]) %*% log(t(p_jk))
+    w_ij[i, ] <- as.numeric(exp(log_aj - max(log_aj) - logSumExp(log_aj - max(log_aj))))
+  }
+
+  # M step
+  l_prev <- l
+  l <- 0
+  for (i in 1:num_docs) {
+    log_ajs <- log(pi) + t(x[i, ]) %*% log(t(p_jk))
+    l <- l + sum(log_ajs)
+  }
+  
+  p_jk <- t(t(x) %*% w_ij) / t(t(rowSums(x)) %*% w_ij)
+  pi <- colSums(w_ij) / num_docs
+}
+
+vocabularize <- function(x) {
+  debate_vocab$V1[x]
+}
+# order vocab table by probabilities we created in asc order. Highest probs are last 10 columns
+vocab_table <- apply(t(apply(p_jk, 1, order)[(num_words-20):(num_words-60), ]), 2, vocabularize)
+#write.csv(vocab_table, "demdebate_2-11-2016_top_words.csv")
+
+plot(pi, main = "Probability topic selected per topic", ylab = "Probability", xlab = "Topic")
+View(vocab_table)
+```
+
